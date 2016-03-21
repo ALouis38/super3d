@@ -31,6 +31,8 @@
 #ifndef SUPER_RES_H_
 #define SUPER_RES_H_
 
+#include <cstdio>
+
 #include <boost/scoped_ptr.hpp>
 
 #include "super_config.h"
