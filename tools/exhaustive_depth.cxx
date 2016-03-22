@@ -83,6 +83,8 @@ int main(int argc, char* argv[])
   vcl_vector<vcl_string> filenames;
 
   vcl_string frame_file = cfg->get_value<vcl_string>("frame_list");
+    // some strings seems to have ' \r' at the end
+  frame_file.resize(frame_file.size()-1);
   vcl_string dir("");
   if (cfg->is_set("directory"))
     dir = cfg->get_value<vcl_string>("directory");
@@ -91,6 +93,8 @@ int main(int argc, char* argv[])
   if (cfg->is_set("camera_file"))
   {
     vcl_string camera_file = cfg->get_value<vcl_string>("camera_file");
+    // some strings seems to have ' \r' at the end
+    camera_file.resize(camera_file.size()-1);
     vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_file  << " to find cameras.\n";
     super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
                          cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"));

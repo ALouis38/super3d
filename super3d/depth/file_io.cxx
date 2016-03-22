@@ -264,6 +264,7 @@ void load_from_frame_file(const char *framefile,
 
   while (framestream >> frame >> imagename && framestream.good())
   {
+    vcl_cout << frame << vcl_endl;
     framelist.push_back(frame);
     filenames.push_back(imagename);
 

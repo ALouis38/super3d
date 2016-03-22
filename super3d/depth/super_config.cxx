@@ -166,6 +166,9 @@ void config::parse_config(const vcl_string &dir, const vcl_string &filename)
     if (line.empty())
       continue;
 
+    //Deleting the carriage return character at the end of the line.
+//    line.resize(line.size()-1);
+
     vcl_istringstream stream(line);
     vcl_string command;
 
