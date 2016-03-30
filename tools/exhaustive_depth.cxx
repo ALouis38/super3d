@@ -103,6 +103,7 @@ int main(int argc, char* argv[])
   else if (cfg->is_set("camera_dir"))
   {
     vcl_string camera_dir = cfg->get_value<vcl_string>("camera_dir");
+    camera_dir.resize(camera_dir.size()-1);
     vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_dir  << " to find cameras.\n";
 
     super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
@@ -112,7 +113,9 @@ int main(int argc, char* argv[])
       vcl_string camname = filenames[i];
       unsigned int found = camname.find_last_of("/\\");
       camname = camname.substr(found+1, camname.size() - 4 - found - 1);
-      camname = cfg->get_value<vcl_string>("camera_dir") + "/" + camname + ".krtd";
+      vcl_string path = cfg->get_value<vcl_string>("camera_dir");
+      path.resize(path.size()-1);
+      camname = path + "/" + camname + ".krtd";
       cameras.push_back(super3d::load_cam(camname));
     }
   }
