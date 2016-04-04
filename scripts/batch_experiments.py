@@ -61,6 +61,12 @@ def load_config(fname):
         pattern.append('$' + key.strip())
     return config, pattern
 
+""" Counting lines in a file """
+def file_len(fname):
+    with open(fname) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
 
 def save_config(fname, config, pattern=None):
     """Save a dictionary as a config file."""
@@ -95,7 +101,7 @@ def config_substitute(config, patterns):
 
 
 def config_format_frame(config, fnum):
-    """Try to use string formatting to instert frame number into strings"""
+    """Try to use string formatting to insert frame number into strings"""
     fmt_config = {}
     for key, (t, val) in config.items():
         try:
@@ -108,17 +114,64 @@ def config_format_frame(config, fnum):
 def exp_param_range(tool, pname, rng, config, cfg_pattern, log_pattern):
     """Construct commands and configs for an experiment.
 
-    Create one command an config for each parameter value in the range.
+    Create one command and config for each parameter value in the range.
     """
+
+    """ Getting frames file name and lines number """
+    conf = config_format_frame(config[0], -1)
+    fname = conf['frame_list'][1];
+
+    """ needed for genearting the subset files name """
+    fname_size = len(fname) - 4;
+
+    nbLines = file_len(fname);
+
+    framesByFile = nbLines/max(rng);
+
+    start = 0;
+
     commands = []
     for i, v in enumerate(rng):
         fmt_config = config_format_frame(config[0], i)
         fmt_config[pname][1] = str(v)
+
+        """ Generating as many output .vtp file as config file """
+        output_file_size = len(fmt_config['output_file'][1]) - 4;
+        fmt_config['output_file'][1] = fmt_config['output_file'][1][:output_file_size] + "_" + str(i) + ".vtp";
+
+        """ Generating the frame subset """
+
+        """ creating the subset file """
+        frameSubsetName = fname[:fname_size] + "_" + str(i) + ".txt";
+        fmt_config['frame_list'][1] = frameSubsetName;
+
+        """ reading the framesByFiles lines for the subset """
+        fTotal = open(fname, 'r');
+        lines = fTotal.readlines();
+
+        """ reading the framesByFiles lines for the subset """
+        f = open(frameSubsetName, 'w');
+
+        frameNumber =0;
+        for line in range(start, start+framesByFile):
+          frame = lines[line].split();
+          frameName = str(frameNumber) + " " + frame[1] + "\n";
+          f.write(frameName);
+          frameNumber+= 1;
+
+        start = start+framesByFile;
+
+        """ choosing the right ref_frame for the subset """
+        fmt_config['ref_frame'][1] = str(start - framesByFile/2 -1);
+
         cfg_file = cfg_pattern % i
         log_file = log_pattern % i
         save_config(cfg_file, fmt_config, config[1])
         cmd_data = [tool, cfg_file], log_file
         commands.append(cmd_data)
+
+        f.close();
+        fTotal.close();
     return commands
 
 
@@ -145,7 +198,7 @@ def main():
                       help="Output directory.  All output files are written"
                       " here.  Also instances of $outdir or ${outdir} in"
                       " the config file are replaced with this path.")
-    parser.add_option("-f", "--conifg-pattern", type="string",
+    parser.add_option("-f", "--config-pattern", type="string",
                       default='config%03d.cfg',
                       action="store", dest="cfg_pattern",
                       help="Config file output pattern, should be something"

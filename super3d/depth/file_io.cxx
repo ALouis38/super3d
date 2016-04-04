@@ -269,11 +269,11 @@ void load_from_frame_file(const char *framefile,
   unsigned int frameMax = std::numeric_limits<unsigned int>::max();
 
   if (range > 0){
-    if(ref_frame > range)
+    if(ref_frame > range) {
       frameMin = ref_frame - range;
+    }
     frameMax = ref_frame + range;
   }
-  vcl_cout << "after test : " << frameMin <<  vcl_endl;
   while (framestream >> frame >> imagename && framestream.good() && frame <= frameMax)
   {
     if(frame >= frameMin){

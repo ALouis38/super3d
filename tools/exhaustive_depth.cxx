@@ -152,10 +152,14 @@ int main(int argc, char* argv[])
   }
 
   unsigned int ref_frame = cfg->get_value<unsigned int>("ref_frame");
-  //if frame_range is set, then the number of the reference frame has changed
+
+  // changing the number of the reference frame according to the frame range
   if (cfg->is_set("frame_range")){
-    ref_frame = cfg->get_value<unsigned int>("frame_range");
+    //if there's exactly 2*frame_range frames in the frame list or ref_frame > frame_range, then the ref_frame is frame_range
+    if(frames.size() == 2*frame_range || ref_frame >= frame_range)
+      ref_frame = frame_range;
   }
+
   vpgl_perspective_camera<double> ref_cam = cameras[ref_frame];
 
   super3d::world_space *ws = NULL;
