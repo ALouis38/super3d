@@ -69,7 +69,6 @@ int main(int argc, char* argv[])
   {
     boost::scoped_ptr<super3d::config> cfg(new super3d::config);
     cfg->read_config(argv[1]);
-
 #ifndef HAVE_VISCL
     if (cfg->is_set("use_gpu") && cfg->get_value<bool>("use_gpu"))
     {
@@ -84,37 +83,50 @@ int main(int argc, char* argv[])
 
   vcl_string frame_file = cfg->get_value<vcl_string>("frame_list");
     // some strings seems to have ' \r' at the end
-  frame_file.resize(frame_file.size()-1);
+  if(frame_file[frame_file.size()-1] == '\r')
+    frame_file.resize(frame_file.size()-1);
   vcl_string dir("");
   if (cfg->is_set("directory"))
     dir = cfg->get_value<vcl_string>("directory");
   vcl_vector<int> frameindex;
 
+  unsigned int frame_range;
+  if(cfg->is_set("frame_range")){
+    frame_range = cfg->get_value<unsigned int>("frame_range");
+  } else {
+    frame_range = 0;
+  }
+
   if (cfg->is_set("camera_file"))
   {
     vcl_string camera_file = cfg->get_value<vcl_string>("camera_file");
     // some strings seems to have ' \r' at the end
-    camera_file.resize(camera_file.size()-1);
+    if(camera_file[camera_file.size()-1] == '\r')
+      camera_file.resize(camera_file.size()-1);
     vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_file  << " to find cameras.\n";
     super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
-                         cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"));
+                         cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"),
+                                  cfg->get_value<unsigned int>("ref_frame"),frame_range);
     super3d::load_cams(camera_file.c_str(), frameindex, cameras);
   }
   else if (cfg->is_set("camera_dir"))
   {
     vcl_string camera_dir = cfg->get_value<vcl_string>("camera_dir");
-    camera_dir.resize(camera_dir.size()-1);
+    if(camera_dir[camera_dir.size()-1] == '\r')
+      camera_dir.resize(camera_dir.size()-1);
     vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_dir  << " to find cameras.\n";
 
     super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
-                          cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"));
+                          cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"),
+                                  cfg->get_value<unsigned int>("ref_frame"),frame_range);
     for (unsigned int i = 0; i < filenames.size(); i++)
     {
       vcl_string camname = filenames[i];
       unsigned int found = camname.find_last_of("/\\");
       camname = camname.substr(found+1, camname.size() - 4 - found - 1);
       vcl_string path = cfg->get_value<vcl_string>("camera_dir");
-      path.resize(path.size()-1);
+      if(path[path.size()-1] == '\r')
+        path.resize(path.size()-1);
       camname = path + "/" + camname + ".krtd";
       cameras.push_back(super3d::load_cam(camname));
     }
@@ -140,6 +152,10 @@ int main(int argc, char* argv[])
   }
 
   unsigned int ref_frame = cfg->get_value<unsigned int>("ref_frame");
+  //if frame_range is set, then the number of the reference frame has changed
+  if (cfg->is_set("frame_range")){
+    ref_frame = cfg->get_value<unsigned int>("frame_range");
+  }
   vpgl_perspective_camera<double> ref_cam = cameras[ref_frame];
 
   super3d::world_space *ws = NULL;
@@ -189,8 +205,12 @@ int main(int argc, char* argv[])
 
     if (cfg->is_set("landmarks_path"))
     {
-      vcl_cout << "Computing depth range from " << cfg->get_value<vcl_string>("landmarks_path") << "\n";
-      super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, cfg->get_value<vcl_string>("landmarks_path"), depth_min, depth_max);
+      vcl_string landmarks_path = cfg->get_value<vcl_string>("landmarks_path");
+//      landmarks_path.resize(landmarks_path.size() - 1);
+//      vcl_cout << "Computing depth range from " << cfg->get_value<vcl_string>("landmarks_path") << "\n";
+      vcl_cout << "Computing depth range from " << landmarks_path.c_str() << "\n";
+//      super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, cfg->get_value<vcl_string>("landmarks_path"), depth_min, depth_max);
+      super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, landmarks_path.c_str(), depth_min, depth_max);
       vcl_cout << "Max estimated depth: " << depth_max << "\n";
       vcl_cout << "Min estimated depth: " << depth_min << "\n";
     }

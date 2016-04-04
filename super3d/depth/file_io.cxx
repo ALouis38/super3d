@@ -256,52 +256,68 @@ void load_from_frame_file(const char *framefile,
                           vcl_vector<int> &framelist,
                           vcl_vector<vil_image_view<double> > &frames,
                           bool color,
-                          bool rgb12)
+                          bool rgb12,
+                          unsigned int ref_frame,
+                          unsigned int range)
 {
   std::ifstream framestream(framefile);
   int frame;
+  int frameNumber = 0;
   vcl_string imagename;
 
-  while (framestream >> frame >> imagename && framestream.good())
+  unsigned int frameMin = 0;
+  unsigned int frameMax = std::numeric_limits<unsigned int>::max();
+
+  if (range > 0){
+    if(ref_frame > range)
+      frameMin = ref_frame - range;
+    frameMax = ref_frame + range;
+  }
+  vcl_cout << "after test : " << frameMin <<  vcl_endl;
+  while (framestream >> frame >> imagename && framestream.good() && frame <= frameMax)
   {
-    vcl_cout << frame << vcl_endl;
-    framelist.push_back(frame);
-    filenames.push_back(imagename);
+    if(frame >= frameMin){
+      vcl_cout << frame << " as " << frameNumber << vcl_endl;
+      framelist.push_back(frameNumber);
+      filenames.push_back(imagename);
 
-    vcl_cout << "Reading frame: " << (directory + imagename) << "\n";
-    vil_image_resource_sptr img_rsc = vil_load_image_resource((directory + imagename).c_str());
-    if (img_rsc != NULL)
-    {
-      vil_image_view<double> flt;
-      if (rgb12)
+      vcl_cout << "Reading frame: " << (directory + imagename) << "\n";
+      vil_image_resource_sptr img_rsc = vil_load_image_resource((directory + imagename).c_str());
+      if (img_rsc != NULL)
       {
-        vil_image_view<unsigned short> img = img_rsc->get_view();
-        vil_convert_cast(img, flt);
-        vil_math_scale_values(flt, 255.0 / 4095.0);
-
-        if (img.nplanes() == 3 && !color)
+        vil_image_view<double> flt;
+        if (rgb12)
         {
-          vil_image_view<double> grey;
-          vil_convert_planes_to_grey(flt, grey);
-          flt = grey;
+          vil_image_view<unsigned short> img = img_rsc->get_view();
+          vil_convert_cast(img, flt);
+          vil_math_scale_values(flt, 255.0 / 4095.0);
+
+          if (img.nplanes() == 3 && !color)
+          {
+            vil_image_view<double> grey;
+            vil_convert_planes_to_grey(flt, grey);
+            flt = grey;
+          }
         }
+        else
+        {
+          vil_image_view<vxl_byte> img = img_rsc->get_view();
+          if (img.nplanes() == 3 && !color)
+            vil_convert_planes_to_grey(img, flt);
+          else
+            vil_convert_cast(img, flt);
+        }
+        frames.push_back(flt);
       }
       else
-      {
-        vil_image_view<vxl_byte> img = img_rsc->get_view();
-        if (img.nplanes() == 3 && !color)
-          vil_convert_planes_to_grey(img, flt);
-        else
-          vil_convert_cast(img, flt);
-      }
-      frames.push_back(flt);
-    }
-    else
-      vcl_cout << "\n" << (directory + imagename) << " NOT FOUND.\n";
-  }
+        vcl_cout << "\n" << (directory + imagename) << " NOT FOUND.\n";
 
-  vcl_cout << "\n";
-  framestream.close();
+      vcl_cout << "\n";
+      frameNumber++;
+    }
+
+  }
+    framestream.close();
 }
 
 /// Load camera from a file per camera

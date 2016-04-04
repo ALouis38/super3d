@@ -71,19 +71,19 @@ compute_world_cost_volume(const vcl_vector<vil_image_view<double> > &frames,
                           const vcl_vector<vpgl_perspective_camera<double> > &cameras,
                           world_space *ws,
                           unsigned int ref_frame,
-                          unsigned int S,
+                          unsigned int numSlices,
                           vil_image_view<double> &cost_volume,
                           double intesity_weight,
                           double gradient_weight,
                           double census_weight)
 {
   const vil_image_view<double> &ref = frames[ref_frame];
-  cost_volume = vil_image_view<double>(ws->ni(), ws->nj(), 1, S);
+  cost_volume = vil_image_view<double>(ws->ni(), ws->nj(), 1, numSlices);
   cost_volume.fill(0.0);
 
   vcl_vector<vpgl_perspective_camera<double> > warp_cams = ws->warp_cams(cameras, ref_frame);
 
-  double s_step = 1.0/static_cast<double>(S);
+  double s_step = 1.0/static_cast<double>(numSlices);
 
   vcl_cout << "Computing cost volume of size (" << cost_volume.ni() << ", " << cost_volume.nj() << ", " << cost_volume.nplanes() << ").\n";
 
@@ -102,7 +102,7 @@ compute_world_cost_volume(const vcl_vector<vil_image_view<double> > &frames,
   vil_image_view<int> counts(ni, nj, 1);
 
   //Depths
-  for (unsigned int k = 0; k < S; k++)
+  for (unsigned int k = 0; k < numSlices; k++)
   {
     vcl_cout << k << " " << vcl_flush;
     double s = (k + 0.5) * s_step;

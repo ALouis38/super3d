@@ -110,7 +110,9 @@ void load_from_frame_file(const char *framefile,
                           vcl_vector<int> &framelist,
                           vcl_vector<vil_image_view<double> > &frames,
                           bool color = false,
-                          bool rgb12 = false);
+                          bool rgb12 = false,
+                          unsigned int ref_frame = 0,
+                          unsigned int range = 0);
 
 /// read a flow file into 2-band image
 SUPER3D_DEPTH_EXPORT
