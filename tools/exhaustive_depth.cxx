@@ -77,6 +77,7 @@ int main(int argc, char* argv[])
     }
 #endif
 
+
   vcl_vector<vil_image_view<double> > frames;
   vcl_vector<vpgl_perspective_camera<double> >  cameras;
   vcl_vector<vcl_string> filenames;
@@ -90,343 +91,434 @@ int main(int argc, char* argv[])
     dir = cfg->get_value<vcl_string>("directory");
   vcl_vector<int> frameindex;
 
-  unsigned int frame_range;
-  if(cfg->is_set("frame_range")){
-    frame_range = cfg->get_value<unsigned int>("frame_range");
+  std::vector<unsigned int>ref_frames_id;
+
+  if (cfg->is_set("nb_ref_frame") && !cfg->is_set("ref_frame")){
+    unsigned int nb_ref_frame = 1;
+    nb_ref_frame = cfg->get_value<unsigned int>("nb_ref_frame");
+
+    //Searching the frame number for the different ref_frame
+
+    //Counting number of lines in the frame list file.
+    unsigned int nb_frame = 0;
+
+    std::ifstream framestream(frame_file.c_str());
+    nb_frame = std::count(std::istreambuf_iterator<char>(framestream), std::istreambuf_iterator<char>(), '\n');
+
+    framestream.close();
+
+    vcl_cout << "Asked for " << nb_ref_frame << " ref frames. File countains " << nb_frame << " frames." << vcl_endl;
+
+    //Determinating an interval excluding the first and last frames as candidate.
+    unsigned int step = nb_frame / nb_ref_frame;
+
+    nb_frame -= step;
+    step = nb_frame / nb_ref_frame;
+
+
+    for (int i = step; i <= nb_frame; i += step) {
+        ref_frames_id.push_back(i);
+    }
+
+  }
+
+  unsigned int frame_window;
+  if(cfg->is_set("frame_window")){
+    frame_window = cfg->get_value<unsigned int>("frame_window");
   } else {
-    frame_range = 0;
+    frame_window = 0;
   }
 
-  if (cfg->is_set("camera_file"))
-  {
-    vcl_string camera_file = cfg->get_value<vcl_string>("camera_file");
-    // some strings seems to have ' \r' at the end
-    if(camera_file[camera_file.size()-1] == '\r')
-      camera_file.resize(camera_file.size()-1);
-    vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_file  << " to find cameras.\n";
-    super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
-                         cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"),
-                                  cfg->get_value<unsigned int>("ref_frame"),frame_range);
-    super3d::load_cams(camera_file.c_str(), frameindex, cameras);
-  }
-  else if (cfg->is_set("camera_dir"))
-  {
-    vcl_string camera_dir = cfg->get_value<vcl_string>("camera_dir");
-    if(camera_dir[camera_dir.size()-1] == '\r')
-      camera_dir.resize(camera_dir.size()-1);
-    vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_dir  << " to find cameras.\n";
+  unsigned int ref_frame;
 
-    super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
-                          cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"),
-                                  cfg->get_value<unsigned int>("ref_frame"),frame_range);
-    for (unsigned int i = 0; i < filenames.size(); i++)
+  if(cfg->is_set("ref_frame"))
+  {
+    ref_frames_id.push_back(cfg->get_value<unsigned int>("ref_frame"));
+  }
+
+  vcl_cout << "Ref frames are : ";
+
+  for (int i = 0; i < ref_frames_id.size(); ++i) {
+    vcl_cout << ref_frames_id[i] << " ";
+  }
+  vcl_cout << vcl_endl;
+
+  unsigned int frame_window_step;
+
+  if(cfg->is_set("frame_window_step")){
+    frame_window_step = cfg->get_value<unsigned int>("frame_window_step");
+  }
+
+  //Computing depthmaps for each ref frame and frames sample
+  for (int id = 0; id < ref_frames_id.size(); ++id) {
+    ref_frame = ref_frames_id[id];
+
+    if (cfg->is_set("camera_file"))
     {
-      vcl_string camname = filenames[i];
-      unsigned int found = camname.find_last_of("/\\");
-      camname = camname.substr(found+1, camname.size() - 4 - found - 1);
-      vcl_string path = cfg->get_value<vcl_string>("camera_dir");
-      if(path[path.size()-1] == '\r')
-        path.resize(path.size()-1);
-      camname = path + "/" + camname + ".krtd";
-      cameras.push_back(super3d::load_cam(camname));
+      vcl_string camera_file = cfg->get_value<vcl_string>("camera_file");
+      // some strings seems to have ' \r' at the end
+      if(camera_file[camera_file.size()-1] == '\r')
+        camera_file.resize(camera_file.size()-1);
+      vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_file  << " to find cameras.\n";
+      super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
+                           cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"),
+                                    ref_frame, frame_window, frame_window_step);
+      super3d::load_cams(camera_file.c_str(), frameindex, cameras);
     }
-  }
-  else
-  {
-    vcl_cerr << "Error: must use camera_file or camera_dir.\n";
-    return -1;
-  }
-
-  if (cfg->is_set("exposure_file"))
-  {
-    vcl_vector<vcl_pair<double, double> > exposures;
-    exposures = super3d::load_exposure(cfg->get_value<vcl_string>("exposure_file"), frameindex);
-
-    for (unsigned int i = 0; i < frames.size(); i++)
-      super3d::apply_exposure_correction(frames[i], exposures[i]);
-  }
-  else
-  {
-    for (unsigned int i = 0; i < frames.size(); i++)
-      vil_math_scale_and_offset_values(frames[i], 1.0/255.0, 0.0);
-  }
-
-  unsigned int ref_frame = cfg->get_value<unsigned int>("ref_frame");
-
-  // changing the number of the reference frame according to the frame range
-  if (cfg->is_set("frame_range")){
-    //if there's exactly 2*frame_range frames in the frame list or ref_frame > frame_range, then the ref_frame is frame_range
-    if(frames.size() == 2*frame_range || ref_frame >= frame_range)
-      ref_frame = frame_range;
-  }
-
-  vpgl_perspective_camera<double> ref_cam = cameras[ref_frame];
-
-  super3d::world_space *ws = NULL;
-  int i0, ni, j0, nj;
-  double depth_min, depth_max;
-
-  if (cfg->is_set("world_volume"))
-  {
-    vcl_istringstream wvstream(cfg->get_value<vcl_string>("world_volume"));
-    vnl_double_3 origin, dimensions;
-    unsigned int ni, nj;
-    for (unsigned int i = 0; i < 3; i++)  wvstream >> origin[i];
-    for (unsigned int i = 0; i < 3; i++)  wvstream >> dimensions[i];
-    wvstream >> ni >> nj;
-    ws = new super3d::world_rectilinear(origin, dimensions, ni, nj);
-  }
-  else
-  {
-    double camera_scale = 1.0;
-    if (cfg->is_set("camera_scale"))
+    else if (cfg->is_set("camera_dir"))
     {
-      camera_scale = cfg->get_value<double>("camera_scale");
-      for (unsigned int i = 0; i < cameras.size(); i++)
-        cameras[i] = super3d::scale_camera(cameras[i], camera_scale);
-    }
-    //Compute the window cropping, scale the cropping by the specified scale so that we do not
-    //need to recompute cropping input for super resolution.
-    if (cfg->is_set("crop_window"))
-    {
-      vcl_istringstream cwstream(cfg->get_value<vcl_string>("crop_window"));
-      cwstream >> i0 >> ni >> j0 >> nj;
-      i0 = (int)(i0*camera_scale);
-      j0 = (int)(j0*camera_scale);
-      ni = (int)(ni*camera_scale);
-      nj = (int)(nj*camera_scale);
-      vcl_cout << "Crop window: " << i0 << " " << ni << " " << j0 << " " << nj << "\n";
+      vcl_string camera_dir = cfg->get_value<vcl_string>("camera_dir");
+      if(camera_dir[camera_dir.size()-1] == '\r')
+        camera_dir.resize(camera_dir.size()-1);
+      vcl_cout << "Using frame file: " << frame_file << " to find images and " << camera_dir  << " to find cameras.\n";
+
+      super3d::load_from_frame_file(frame_file.c_str(), dir, filenames, frameindex, frames,
+                            cfg->get_value<bool>("use_color"), cfg->get_value<bool>("use_rgb12"),
+                                    ref_frame,frame_window, frame_window_step);
+      for (unsigned int i = 0; i < filenames.size(); i++)
+      {
+        vcl_string camname = filenames[i];
+        unsigned int found = camname.find_last_of("/\\");
+        camname = camname.substr(found+1, camname.size() - 4 - found - 1);
+        vcl_string path = cfg->get_value<vcl_string>("camera_dir");
+        if(path[path.size()-1] == '\r')
+          path.resize(path.size()-1);
+        camname = path + "/" + camname + ".krtd";
+        cameras.push_back(super3d::load_cam(camname));
+      }
     }
     else
     {
-      i0 = j0 = 0;
-      ni = frames[ref_frame].ni();
-      nj = frames[ref_frame].nj();
+      vcl_cerr << "Error: must use camera_file or camera_dir.\n";
+      return -1;
     }
 
-    frames[ref_frame] = vil_crop(frames[ref_frame], i0, ni, j0, nj);
-    cameras[ref_frame] = super3d::crop_camera(cameras[ref_frame], i0, j0);
-
-    if (cfg->is_set("landmarks_path"))
+    if (cfg->is_set("exposure_file"))
     {
-      vcl_string landmarks_path = cfg->get_value<vcl_string>("landmarks_path");
-//      landmarks_path.resize(landmarks_path.size() - 1);
-//      vcl_cout << "Computing depth range from " << cfg->get_value<vcl_string>("landmarks_path") << "\n";
-      vcl_cout << "Computing depth range from " << landmarks_path.c_str() << "\n";
-//      super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, cfg->get_value<vcl_string>("landmarks_path"), depth_min, depth_max);
-      super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, landmarks_path.c_str(), depth_min, depth_max);
-      vcl_cout << "Max estimated depth: " << depth_max << "\n";
-      vcl_cout << "Min estimated depth: " << depth_min << "\n";
+      vcl_vector<vcl_pair<double, double> > exposures;
+      vcl_string exposure_file = cfg->get_value<vcl_string>("exposure_file");
+      if(exposure_file[exposure_file.size() -1] == '\r')
+        exposure_file.resize(exposure_file.size() -1);
+      exposures = super3d::load_exposure(exposure_file, frameindex);
+
+      for (unsigned int i = 0; i < frames.size(); i++)
+        super3d::apply_exposure_correction(frames[i], exposures[i]);
     }
     else
     {
-      depth_min = cfg->get_value<double>("depth_min");
-      depth_max = cfg->get_value<double>("depth_max");
+      for (unsigned int i = 0; i < frames.size(); i++)
+        vil_math_scale_and_offset_values(frames[i], 1.0/255.0, 0.0);
+    }
+    unsigned int ref_frame_index = ref_frame;
+    // changing the number of the reference frame according to the frame range
+    if (cfg->is_set("frame_window")){
+      //if there's exactly 2*frame_window frames in the frame list or ref_frame > frame_window, then the ref_frame is frame_window
+      if(frames.size() == 2*frame_window || ref_frame >= frame_window)
+        ref_frame = frame_window;
     }
 
+    vcl_cout << "ref_frame = " << ref_frame_index << vcl_endl;
 
+    vpgl_perspective_camera<double> ref_cam = cameras[ref_frame];
 
-    ws = new super3d::world_frustum(cameras[ref_frame], depth_min, depth_max, ni, nj);
-  }
+    super3d::world_space *ws = NULL;
+    int i0, ni, j0, nj;
+    double depth_min, depth_max;
 
-  vcl_cout << "Refining depth"<<vcl_endl;
-  unsigned int S = cfg->get_value<unsigned int>("num_slices");
-  double theta0 = cfg->get_value<double>("theta_start");
-  double theta_end = cfg->get_value<double>("theta_end");
-  double beta = cfg->get_value<double>("beta");
-  double lambda = cfg->get_value<double>("lambda");
-  double gw_alpha = cfg->get_value<double>("gw_alpha");
-  double epsilon = cfg->get_value<double>("epsilon");
-
-  vil_image_view<double> g;
-  vil_image_view<double> cost_volume;
-
-  if (!cfg->is_set("compute_cost_volume") ||
-      cfg->get_value<bool>("compute_cost_volume") )
-  {
-    double iw = cfg->get_value<double>("intensity_cost_weight");
-    double gw = cfg->get_value<double>("gradient_cost_weight");
-    double cw = cfg->get_value<double>("census_cost_weight");
-    super3d::compute_world_cost_volume(frames, cameras, ws, ref_frame, S, cost_volume, iw, gw, cw);
-    //compute_cost_volume_warp(frames, cameras, ref_frame, S, depth_min, depth_max, cost_volume);
-    ws->compute_g(frames[ref_frame], g, gw_alpha, 1.0);
-
-    if(cfg->is_set("cost_volume_file"))
+    if (cfg->is_set("world_volume"))
     {
-      vcl_string cost_file = cfg->get_value<vcl_string>("cost_volume_file");
-      super3d::save_cost_volume(cost_volume, g, cost_file.c_str());
+      vcl_istringstream wvstream(cfg->get_value<vcl_string>("world_volume"));
+      vnl_double_3 origin, dimensions;
+      unsigned int ni, nj;
+      for (unsigned int i = 0; i < 3; i++)  wvstream >> origin[i];
+      for (unsigned int i = 0; i < 3; i++)  wvstream >> dimensions[i];
+      wvstream >> ni >> nj;
+      ws = new super3d::world_rectilinear(origin, dimensions, ni, nj);
     }
-  }
-  else if (cfg->is_set("cost_volume_file"))
-  {
-    vcl_string cost_file = cfg->get_value<vcl_string>("cost_volume_file");
-    if (cfg->is_set("mix_cost_volumes") &&
-        cfg->get_value<bool>("mix_cost_volumes"))
+    else
+    {
+      double camera_scale = 1.0;
+      if (cfg->is_set("camera_scale"))
+      {
+        camera_scale = cfg->get_value<double>("camera_scale");
+        for (unsigned int i = 0; i < cameras.size(); i++)
+          cameras[i] = super3d::scale_camera(cameras[i], camera_scale);
+      }
+      //Compute the window cropping, scale the cropping by the specified scale so that we do not
+      //need to recompute cropping input for super resolution.
+      if (cfg->is_set("crop_window"))
+      {
+        vcl_istringstream cwstream(cfg->get_value<vcl_string>("crop_window"));
+        cwstream >> i0 >> ni >> j0 >> nj;
+        i0 = (int)(i0*camera_scale);
+        j0 = (int)(j0*camera_scale);
+        ni = (int)(ni*camera_scale);
+        nj = (int)(nj*camera_scale);
+        vcl_cout << "Crop window: " << i0 << " " << ni << " " << j0 << " " << nj << "\n";
+      }
+      else
+      {
+        i0 = j0 = 0;
+        ni = frames[ref_frame].ni();
+        nj = frames[ref_frame].nj();
+      }
+
+      frames[ref_frame] = vil_crop(frames[ref_frame], i0, ni, j0, nj);
+      cameras[ref_frame] = super3d::crop_camera(cameras[ref_frame], i0, j0);
+
+      if (cfg->is_set("landmarks_path"))
+      {
+        vcl_string landmarks_path = cfg->get_value<vcl_string>("landmarks_path");
+        if (landmarks_path[landmarks_path.size() - 1] == '\r')
+          landmarks_path.resize(landmarks_path.size() - 1);
+  //      vcl_cout << "Computing depth range from " << cfg->get_value<vcl_string>("landmarks_path") << "\n";
+        vcl_cout << "Computing depth range from " << landmarks_path.c_str() << "\n";
+  //      super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, cfg->get_value<vcl_string>("landmarks_path"), depth_min, depth_max);
+        super3d::compute_depth_range(cameras[ref_frame], 0, ni, 0, nj, landmarks_path.c_str(), depth_min, depth_max);
+        vcl_cout << "Max estimated depth: " << depth_max << "\n";
+        vcl_cout << "Min estimated depth: " << depth_min << "\n";
+      }
+      else
+      {
+        depth_min = cfg->get_value<double>("depth_min");
+        depth_max = cfg->get_value<double>("depth_max");
+      }
+
+
+
+      ws = new super3d::world_frustum(cameras[ref_frame], depth_min, depth_max, ni, nj);
+    }
+
+    vcl_cout << "Refining depth"<<vcl_endl;
+    unsigned int S = cfg->get_value<unsigned int>("num_slices");
+    double theta0 = cfg->get_value<double>("theta_start");
+    double theta_end = cfg->get_value<double>("theta_end");
+    double beta = cfg->get_value<double>("beta");
+    double lambda = cfg->get_value<double>("lambda");
+    double gw_alpha = cfg->get_value<double>("gw_alpha");
+    double epsilon = cfg->get_value<double>("epsilon");
+
+    vil_image_view<double> g;
+    vil_image_view<double> cost_volume;
+
+    if (!cfg->is_set("compute_cost_volume") ||
+        cfg->get_value<bool>("compute_cost_volume") )
     {
       double iw = cfg->get_value<double>("intensity_cost_weight");
       double gw = cfg->get_value<double>("gradient_cost_weight");
       double cw = cfg->get_value<double>("census_cost_weight");
-      int pos = cost_file.find_last_of(".");
-      vcl_string ext = cost_file.substr(pos);
-      vcl_string basename = cost_file.substr(0, pos);
-      vil_image_view<double> tmp;
-      super3d::load_cost_volume(cost_volume, g, (basename+"_intensity"+ext).c_str());
-      super3d::load_cost_volume(tmp, g, (basename+"_gradient"+ext).c_str());
-      vil_math_add_image_fraction(cost_volume, iw, tmp, gw);
-      super3d::load_cost_volume(tmp, g, (basename+"_census"+ext).c_str());
-      vil_math_add_image_fraction(cost_volume, 1.0, tmp, cw);
-    }
-    else
-    {
-      super3d::load_cost_volume(cost_volume, g, cost_file.c_str());
-    }
-  }
-  else
-  {
-    vcl_cerr << "Error: must either set compute_cost_volume"
-             << " or specify a cost_volume_file to load." << vcl_endl;
-    return -1;
-  }
 
+      boost::chrono::system_clock::time_point startCV = boost::chrono::system_clock::now();
 
-  vcl_cout << "Refining Depth. ..\n";
-  vil_image_view<double> depth(cost_volume.ni(), cost_volume.nj(), 1);
+      super3d::compute_world_cost_volume(frames, cameras, ws, ref_frame, S, cost_volume, iw, gw, cw);
+      //compute_cost_volume_warp(frames, cameras, ref_frame, S, depth_min, depth_max, cost_volume);
+      ws->compute_g(frames[ref_frame], g, gw_alpha, 1.0);
 
-#ifndef USE_BP
+      boost::chrono::duration<double> secCV = boost::chrono::system_clock::now() - startCV;
+      vcl_cout << "Computed cost volume in " << secCV.count() << " seconds.\n";
 
-  if (!cfg->is_set("compute_init_depthmap") ||
-       cfg->get_value<bool>("compute_init_depthmap") )
-  {
-#ifdef HAVE_VISCL
-    if (cfg->is_set("use_gpu") &&
-        cfg->get_value<bool>("use_gpu") )
-    {
-      super3d::cl::refine_depth_cl_t rd = NEW_VISCL_TASK(super3d::cl::refine_depth_cl);
-      vil_image_view<float> depth_f(cost_volume.ni(), cost_volume.nj(), 1);
-      vil_image_view<float> cv_f(cost_volume.ni(), cost_volume.nj(), 1, cost_volume.nplanes());
-      vil_image_view<float> g_f;
-      vil_convert_cast<double, float>(g, g_f);
-
+      if(cfg->is_set("cost_volume_file"))
       {
-        vil_image_view<float> cv_float;
-        vil_convert_cast<double, float>(cost_volume, cv_float);
-        vil_copy_reformat<float>(cv_float, cv_f);
+        vcl_string cost_file = cfg->get_value<vcl_string>("cost_volume_file");
+        if(cost_file[cost_file.size()-1] == '\r')
+          cost_file.resize(cost_file.size()-1);
+        cost_file.resize(cost_file.size() - 4);
+        std::string sRef_frame = static_cast<std::ostringstream*>( &(std::ostringstream() << ref_frame_index) )->str();
+        cost_file = cost_file + "_ref_frame_" + sRef_frame + ".dat";
+        super3d::save_cost_volume(cost_volume, g, cost_file.c_str());
       }
-
-      boost::chrono::system_clock::time_point start = boost::chrono::system_clock::now();
-      rd->refine(cv_f, depth_f, g_f, beta, theta0, theta_end, lambda);
-      boost::chrono::duration<double> sec = boost::chrono::system_clock::now() - start;
-      vcl_cout << "viscl took " << sec.count() << " seconds.\n";
-      vil_convert_cast<float, double>(depth_f, depth);
+    }
+    else if (cfg->is_set("cost_volume_file"))
+    {
+      vcl_string cost_file = cfg->get_value<vcl_string>("cost_volume_file");
+      if(cost_file[cost_file.size()-1] == '\r')
+        cost_file.resize(cost_file.size()-1);
+      if (cfg->is_set("mix_cost_volumes") &&
+          cfg->get_value<bool>("mix_cost_volumes"))
+      {
+        double iw = cfg->get_value<double>("intensity_cost_weight");
+        double gw = cfg->get_value<double>("gradient_cost_weight");
+        double cw = cfg->get_value<double>("census_cost_weight");
+        int pos = cost_file.find_last_of(".");
+        vcl_string ext = cost_file.substr(pos);
+        vcl_string basename = cost_file.substr(0, pos);
+        vil_image_view<double> tmp;
+        super3d::load_cost_volume(cost_volume, g, (basename+"_intensity"+ext).c_str());
+        super3d::load_cost_volume(tmp, g, (basename+"_gradient"+ext).c_str());
+        vil_math_add_image_fraction(cost_volume, iw, tmp, gw);
+        super3d::load_cost_volume(tmp, g, (basename+"_census"+ext).c_str());
+        vil_math_add_image_fraction(cost_volume, 1.0, tmp, cw);
+      }
+      else
+      {
+        super3d::load_cost_volume(cost_volume, g, cost_file.c_str());
+      }
     }
     else
-#endif
     {
-      boost::chrono::system_clock::time_point start = boost::chrono::system_clock::now();
-
-      unsigned int iterations = 2000;
-      if (cfg->is_set("iterations"))
-        iterations = cfg->get_value<unsigned int>("iterations");
-      super3d::refine_depth(cost_volume, g, depth, iterations, theta0, theta_end, lambda, epsilon);
-
-      boost::chrono::duration<double> sec = boost::chrono::system_clock::now() - start;
-      vcl_cout << "super3d took " << sec.count() << " seconds.\n";
+      vcl_cerr << "Error: must either set compute_cost_volume"
+               << " or specify a cost_volume_file to load." << vcl_endl;
+      return -1;
     }
-    if(cfg->is_set("init_depthmap_file"))
+
+
+    vcl_cout << "Refining Depth. ..\n";
+    vil_image_view<double> depth(cost_volume.ni(), cost_volume.nj(), 1);
+
+  #ifndef USE_BP
+
+    if (!cfg->is_set("compute_init_depthmap") ||
+         cfg->get_value<bool>("compute_init_depthmap") )
+    {
+  #ifdef HAVE_VISCL
+      if (cfg->is_set("use_gpu") &&
+          cfg->get_value<bool>("use_gpu") )
+      {
+        super3d::cl::refine_depth_cl_t rd = NEW_VISCL_TASK(super3d::cl::refine_depth_cl);
+        vil_image_view<float> depth_f(cost_volume.ni(), cost_volume.nj(), 1);
+        vil_image_view<float> cv_f(cost_volume.ni(), cost_volume.nj(), 1, cost_volume.nplanes());
+        vil_image_view<float> g_f;
+        vil_convert_cast<double, float>(g, g_f);
+
+        {
+          vil_image_view<float> cv_float;
+          vil_convert_cast<double, float>(cost_volume, cv_float);
+          vil_copy_reformat<float>(cv_float, cv_f);
+        }
+
+        boost::chrono::system_clock::time_point start = boost::chrono::system_clock::now();
+        rd->refine(cv_f, depth_f, g_f, beta, theta0, theta_end, lambda);
+        boost::chrono::duration<double> sec = boost::chrono::system_clock::now() - start;
+        vcl_cout << "viscl took " << sec.count() << " seconds.\n";
+        vil_convert_cast<float, double>(depth_f, depth);
+      }
+      else
+  #endif
+      {
+        boost::chrono::system_clock::time_point start = boost::chrono::system_clock::now();
+
+        unsigned int iterations = 2000;
+        if (cfg->is_set("iterations"))
+          iterations = cfg->get_value<unsigned int>("iterations");
+        super3d::refine_depth(cost_volume, g, depth, iterations, theta0, theta_end, lambda, epsilon);
+
+        boost::chrono::duration<double> sec = boost::chrono::system_clock::now() - start;
+        vcl_cout << "super3d took " << sec.count() << " seconds.\n";
+      }
+      if(cfg->is_set("init_depthmap_file"))
+      {
+        vcl_string depthmap_file = cfg->get_value<vcl_string>("init_depthmap_file");
+        if(depthmap_file[depthmap_file.size()-1] == '\r')
+          depthmap_file.resize(depthmap_file.size()-1);
+        super3d::save_depth(depth, depthmap_file.c_str());
+      }
+    }
+    else if (cfg->is_set("init_depthmap_file"))
     {
       vcl_string depthmap_file = cfg->get_value<vcl_string>("init_depthmap_file");
-      super3d::save_depth(depth, depthmap_file.c_str());
+      if(depthmap_file[depthmap_file.size()-1] == '\r')
+        depthmap_file.resize(depthmap_file.size()-1);
+      super3d::load_depth(depth, depthmap_file.c_str());
     }
-  }
-  else if (cfg->is_set("init_depthmap_file"))
-  {
-    vcl_string depthmap_file = cfg->get_value<vcl_string>("init_depthmap_file");
-    super3d::load_depth(depth, depthmap_file.c_str());
-  }
-  else
-  {
-    vcl_cerr << "Error: must either set compute_init_depthmap"
-             << " or specify an init_depthmap_file to load." << vcl_endl;
-    return -1;
-  }
+    else
+    {
+      vcl_cerr << "Error: must either set compute_init_depthmap"
+               << " or specify an init_depthmap_file to load." << vcl_endl;
+      return -1;
+    }
 
-  super3d::save_depth(depth, "depth_map_normals.dat");
+    super3d::save_depth(depth, "depth_map_normals.dat");
 
-#else
-  bp_refine(cost_volume, depth_min, depth_max, depth);    //TODO: need to check if this works after idepth->depth change
-#endif
+  #else
+    bp_refine(cost_volume, depth_min, depth_max, depth);    //TODO: need to check if this works after idepth->depth change
+  #endif
 
-  if (cfg->is_set("output_depthmap"))
-  {
-    vil_image_view<vxl_byte> dmap;
-    vil_convert_stretch_range_limited(depth, dmap, 0.0, 1.0);
-    // depth map are drawn inverted (white == closest) for viewing
-    vil_math_scale_and_offset_values(dmap, -1.0, 255);
-    vcl_string depthmap_file = cfg->get_value<vcl_string>("output_depthmap");
-    vil_save(dmap, depthmap_file.c_str());
-  }
+    if (cfg->is_set("output_depthmap"))
+    {
+      vil_image_view<vxl_byte> dmap;
+      vil_convert_stretch_range_limited(depth, dmap, 0.0, 1.0);
+      // depth map are drawn inverted (white == closest) for viewing
+      vil_math_scale_and_offset_values(dmap, -1.0, 255);
+      vcl_string depthmap_file = cfg->get_value<vcl_string>("output_depthmap");
+      if(depthmap_file[depthmap_file.size()-1] == '\r')
+        depthmap_file.resize(depthmap_file.size()-1);
+      vil_save(dmap, depthmap_file.c_str());
+    }
 
-  vcl_cout << "writing mesh"<<vcl_endl;
-#ifdef HAVE_VTK
-  //vtp depth writer uses 0..1 depth scaling
-  vil_image_view<double> d_texture;
+    vcl_cout << "writing mesh"<<vcl_endl;
+  #ifdef HAVE_VTK
+    //vtp depth writer uses 0..1 depth scaling
+    vil_image_view<double> d_texture;
 
-  if (cfg->get_value<bool>("use_rgb12"))
-  {
-    vil_image_resource_sptr img_rsc = vil_load_image_resource((dir + filenames[ref_frame]).c_str());
-    vil_image_view<unsigned short> us_texture = img_rsc->get_view();
-    vil_convert_cast(us_texture, d_texture);
-    vil_math_scale_values(d_texture, 255.0 / 4095.0);
-  }
-  else
-  {
-    vil_image_view<vxl_byte> b_texture;
-    b_texture = vil_load((dir + filenames[ref_frame]).c_str());
-    vil_convert_cast<vxl_byte, double>(b_texture, d_texture);
-  }
+    if (cfg->get_value<bool>("use_rgb12"))
+    {
+      vil_image_resource_sptr img_rsc = vil_load_image_resource((dir + filenames[ref_frame]).c_str());
+      vil_image_view<unsigned short> us_texture = img_rsc->get_view();
+      vil_convert_cast(us_texture, d_texture);
+      vil_math_scale_values(d_texture, 255.0 / 4095.0);
+    }
+    else
+    {
+      vil_image_view<vxl_byte> b_texture;
+      b_texture = vil_load((dir + filenames[ref_frame]).c_str());
+      vil_convert_cast<vxl_byte, double>(b_texture, d_texture);
+    }
 
-  vcl_string output_file_name = cfg->get_value<vcl_string>("output_file");
-  save_depth_to_vtp(output_file_name.c_str(), depth, d_texture, ref_cam, ws);
-#endif
+    vcl_string output_file_name = cfg->get_value<vcl_string>("output_file");
+    if(ref_frames_id.size() > 1){
+      output_file_name.resize(output_file_name.size() - 4);
+      std::string sRef_frame = static_cast<std::ostringstream*>( &(std::ostringstream() << ref_frame_index) )->str();
+      output_file_name = output_file_name + "ref_frame_" + sRef_frame + ".vtp";
+    }
+    save_depth_to_vtp(output_file_name.c_str(), depth, d_texture, ref_cam, ws);
+  #endif
 
-  // map depth from normalized range back into true depth
-  double depth_scale = depth_max - depth_min;
-  vil_math_scale_and_offset_values(depth, depth_scale, depth_min);
+    // map depth from normalized range back into true depth
+    double depth_scale = depth_max - depth_min;
+    vil_math_scale_and_offset_values(depth, depth_scale, depth_min);
 
-  if (cfg->is_set("obj_file"))
-  {
-    double output_decimate = 1.0;
-    imesh_mesh nm = super3d::depth_map_to_mesh(super3d::scale_camera(cameras[ref_frame], 1.0/output_decimate),
-                                               vil_decimate(depth,output_decimate));
-    imesh_write_obj(cfg->get_value<vcl_string>("obj_file"), nm);
-  }
+    if (cfg->is_set("obj_file"))
+    {
+      double output_decimate = 1.0;
+      imesh_mesh nm = super3d::depth_map_to_mesh(super3d::scale_camera(cameras[ref_frame], 1.0/output_decimate),
+                                                 vil_decimate(depth,output_decimate));
+      imesh_write_obj(cfg->get_value<vcl_string>("obj_file"), nm);
+    }
 
-  if (cfg->is_set("output_float_depthmap"))
-  {
-    vcl_string depthmap_file = cfg->get_value<vcl_string>("output_float_depthmap");
-    vil_save(depth, depthmap_file.c_str());
-  }
+    if (cfg->is_set("output_float_depthmap"))
+    {
+      vcl_string depthmap_file = cfg->get_value<vcl_string>("output_float_depthmap");
+      if(depthmap_file[depthmap_file.size()-1] == '\r')
+        depthmap_file.resize(depthmap_file.size()-1);
+      vil_save(depth, depthmap_file.c_str());
+    }
 
-  vil_image_view<double> gt;
-  if (cfg->is_set("ground_truth"))
-  {
-    vcl_string gtfile = cfg->get_value<vcl_string>("ground_truth");
-    gt = vil_load(gtfile.c_str());
-    gt = vil_crop(gt, i0, ni, j0, nj);
-    vil_image_view<double> diff;
-    vil_math_image_difference(gt, depth, diff);
-    vil_image_view<vxl_byte> diff_byte;
-    vil_convert_stretch_range_limited(diff, diff_byte, -depth_scale, depth_scale);
-    vil_save(diff_byte, "diff.png");
+    vil_image_view<double> gt;
+    if (cfg->is_set("ground_truth"))
+    {
+      vcl_string gtfile = cfg->get_value<vcl_string>("ground_truth");
+      if(gtfile[gtfile.size()-1] == '\r')
+        gtfile.resize(gtfile.size()-1);
+      gt = vil_load(gtfile.c_str());
+      gt = vil_crop(gt, i0, ni, j0, nj);
+      vil_image_view<double> diff;
+      vil_math_image_difference(gt, depth, diff);
+      vil_image_view<vxl_byte> diff_byte;
+      vil_convert_stretch_range_limited(diff, diff_byte, -depth_scale, depth_scale);
+      vil_save(diff_byte, "diff.png");
 
-    double threshold = depth_scale / S;
-    super3d::score_vs_gt(depth, gt, threshold);
-    vcl_cout << "cost of estimated depth: " << super3d::eval_hessian_frob(depth, cost_volume, lambda) << "\n";
-    vcl_cout << "cost of gt depth: " << super3d::eval_hessian_frob(gt, cost_volume, lambda) << "\n";
-  }
+      double threshold = depth_scale / S;
+      super3d::score_vs_gt(depth, gt, threshold);
+      vcl_cout << "cost of estimated depth: " << super3d::eval_hessian_frob(depth, cost_volume, lambda) << "\n";
+      vcl_cout << "cost of gt depth: " << super3d::eval_hessian_frob(gt, cost_volume, lambda) << "\n";
+    }
 
-  if (ws) delete ws;
-
+    if (ws) delete ws;
+    cameras.clear();
+    frames.clear();
+    filenames.clear();
+    frameindex.clear();
+  }//End for
   } catch (const super3d::config::cfg_exception &e)
   {
     vcl_cout << "Error in config: " << e.what() << "\n";

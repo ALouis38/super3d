@@ -258,7 +258,8 @@ void load_from_frame_file(const char *framefile,
                           bool color,
                           bool rgb12,
                           unsigned int ref_frame,
-                          unsigned int range)
+                          unsigned int range,
+                          unsigned int frame_window_step)
 {
   std::ifstream framestream(framefile);
   int frame;
@@ -267,6 +268,9 @@ void load_from_frame_file(const char *framefile,
 
   unsigned int frameMin = 0;
   unsigned int frameMax = std::numeric_limits<unsigned int>::max();
+vcl_cout << "range = " << range << vcl_endl;
+  if(frame_window_step > 1)
+    range = range * frame_window_step;
 
   if (range > 0){
     if(ref_frame > range) {
@@ -274,9 +278,15 @@ void load_from_frame_file(const char *framefile,
     }
     frameMax = ref_frame + range;
   }
+
+  unsigned int frameSkip;
+
+//  vcl_cout << "range = " << range << "frame_window_step = " << frame_window_step << "frameMin = " << frameMin << "frameMax = " << frameMax <<vcl_endl;
+
   while (framestream >> frame >> imagename && framestream.good() && frame <= frameMax)
   {
-    if(frame >= frameMin){
+
+    if(frame >= frameMin && (!frame_window_step || !(frameSkip%frame_window_step))){
       vcl_cout << frame << " as " << frameNumber << vcl_endl;
       framelist.push_back(frameNumber);
       filenames.push_back(imagename);
@@ -315,7 +325,7 @@ void load_from_frame_file(const char *framefile,
       vcl_cout << "\n";
       frameNumber++;
     }
-
+    frameSkip++;
   }
     framestream.close();
 }

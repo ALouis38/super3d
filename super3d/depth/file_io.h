@@ -112,7 +112,8 @@ void load_from_frame_file(const char *framefile,
                           bool color = false,
                           bool rgb12 = false,
                           unsigned int ref_frame = 0,
-                          unsigned int range = 0);
+                          unsigned int range = 0,
+                          unsigned int frame_window_step = 0);
 
 /// read a flow file into 2-band image
 SUPER3D_DEPTH_EXPORT
